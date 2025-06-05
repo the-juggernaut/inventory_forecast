@@ -1,0 +1,43 @@
+Index: 5832737 entries, 1612 to 5831299
+Data columns (total 38 columns):
+ #   Column                Dtype              
+---  ------                -----              
+ 0   item_id               object             
+ 1   dept_id               object             
+ 2   cat_id                object             
+ 3   sales                 int16              
+ 4   wday                  int8               
+ 5   month                 int8               
+ 6   year                  int16              
+ 7   sell_price            float32            
+ 8   lag_7                 float32            
+ 9   lag_14                float32            
+ 10  lag_28                float32            
+ 11  rolling_mean_7        float32            
+ 12  rolling_std_7         float32            
+ 13  rolling_mean_14       float32            
+ 14  rolling_std_14        float32            
+ 15  rolling_mean_28       float32            
+ 16  rolling_std_28        float32            
+ 17  rolling_mean_56       float32            
+ 18  rolling_std_56        float32            
+ 19  expanding_mean        float32            
+ 20  price_change_pct      float32            
+ 21  rolling_price_std_4w  float32            
+ 22  week_of_year          int8               
+ 23  dow_0                 bool               
+ 24  dow_1                 bool               
+ 25  dow_2                 bool               
+ 26  dow_3                 bool               
+ 27  dow_4                 bool               
+ 28  dow_5                 bool               
+ 29  dow_6                 bool               
+ 30  event_1_Cultural      Sparse[bool, False]
+ 31  event_1_National      Sparse[bool, False]
+ 32  event_1_None          Sparse[bool, False]
+ 33  event_1_Religious     Sparse[bool, False]
+ 34  event_1_Sporting      Sparse[bool, False]
+ 35  event_2_Cultural      Sparse[bool, False]
+ 36  event_2_None          Sparse[bool, False]
+ 37  event_2_Religious     Sparse[bool, False]
+dtypes: Sparse[bool, False](8), bool(7), float32(15), int16(2), int8(3), object(3)
