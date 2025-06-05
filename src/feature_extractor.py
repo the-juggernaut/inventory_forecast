@@ -1,0 +1,128 @@
+import numpy as np
+import pandas as pd
+import os
+from pathlib import Path
+
+
+class FeatureExtractor:
+    """
+    This class processes sales, calendar, and sell prices data to create
+    a feature-rich DataFrame suitable for time series forecasting tasks.
+
+    Features include:
+    - Lag features for sales for periods [7, 14, 28]
+    - Rolling statistics (mean, std) of window_sizes [7, 14, 28, 56]
+    - Price features (percentage change, rolling std)
+    - Expanding mean of sales
+    - Time-based features (day of week, week of year, month, year)
+    - One-hot encoding day of week and event categories
+    """
+
+    def __init__(self, calendar_df, sell_prices_df, sales_df):
+        self.calendar = calendar_df.copy()
+        self.prices = sell_prices_df.copy()
+        self.sales = sales_df.copy()
+
+        # Preprocess calendar
+        self.calendar["date"] = pd.to_datetime(self.calendar["date"])
+        self.calendar = self.calendar.drop(
+            columns=[col for col in self.calendar.columns if "snap" in col],
+            errors="ignore",
+        )
+
+    def reduce_mem_usage(self, df):
+        for col in df.columns:
+            col_type = df[col].dtype
+
+            if pd.api.types.is_numeric_dtype(col_type):
+                if pd.api.types.is_float_dtype(col_type):
+                    df[col] = pd.to_numeric(df[col], downcast="float")
+                elif pd.api.types.is_integer_dtype(col_type):
+                    df[col] = pd.to_numeric(df[col], downcast="integer")
+        return df
+
+    def prepare_features(self):
+        id_vars = ["item_id", "dept_id", "cat_id"]
+        value_vars = [col for col in self.sales.columns if col.startswith("d_")]
+
+        # Melt wide format
+        sales_long = self.sales.melt(
+            id_vars=id_vars, value_vars=value_vars, var_name="d", value_name="sales"
+        )
+
+        # Merge calendar and prices
+        df = sales_long.merge(self.calendar, on="d", how="left")
+        df = df.merge(self.prices, on=["item_id", "wm_yr_wk"], how="left")
+        df = df.sort_values(by=["item_id", "date"])
+
+        # Fill missing sell_price with forward fill
+        df["sell_price"] = df.groupby("item_id")["sell_price"].ffill()
+
+        # Lag features
+        for lag in [7, 14, 28]:
+            df[f"lag_{lag}"] = df.groupby("item_id")["sales"].shift(lag)
+
+        # Rolling window sizes
+        roll_windows = [7, 14, 28, 56]
+        for window in roll_windows:
+            df[f"rolling_mean_{window}"] = df.groupby("item_id")["sales"].transform(
+                lambda x: x.shift(1).rolling(window).mean()
+            )
+            df[f"rolling_std_{window}"] = df.groupby("item_id")["sales"].transform(
+                lambda x: x.shift(1).rolling(window).std()
+            )
+
+        # Expanding window feature
+        df["expanding_mean"] = df.groupby("item_id")["sales"].transform(
+            lambda x: x.shift(1).expanding().mean()
+        )
+
+        # Price features
+        df["price_change_pct"] = df.groupby("item_id")["sell_price"].pct_change(
+            fill_method=None
+        )
+        df["rolling_price_std_4w"] = df.groupby("item_id")["sell_price"].transform(
+            lambda x: x.rolling(28).std()
+        )
+
+        # Time-based features
+        df["day_of_week"] = df["date"].dt.weekday
+        df["week_of_year"] = df["date"].dt.isocalendar().week.astype("int")
+        df["quarter"] = df["date"].dt.quarter
+        df["month"] = df["date"].dt.month
+        df["year"] = df["date"].dt.year
+
+        # One-hot encode day of week
+        df = pd.get_dummies(df, columns=["day_of_week"], prefix="dow")
+
+        # Event type one-hot
+        df["event_type_1"] = df["event_type_1"].fillna("None")
+        df["event_type_2"] = df["event_type_2"].fillna("None")
+        df = pd.get_dummies(df, columns=["event_type_1"], prefix="event_1", sparse=True)
+        df = pd.get_dummies(df, columns=["event_type_2"], prefix="event_2", sparse=True)
+
+        # Drop columns that are no longer needed
+        drop_cols = ["d", "wm_yr_wk", "event_name_1", "event_name_2", "weekday", "date"]
+        drop_cols = [col for col in drop_cols if col in df.columns]
+        df = df.drop(columns=drop_cols, errors="ignore")
+
+        df = self.reduce_mem_usage(df)
+
+        return df
+
+
+# # Load data
+data_dir = str(Path.cwd().parent / "dataset" / "raw")
+calendar = pd.read_csv(os.path.join(data_dir, "calendar.csv"))
+sell_prices = pd.read_csv(os.path.join(data_dir, "sell_prices.csv"))
+# sales = pd.read_csv(os.path.join(data_dir, "sales_train.csv"))
+sales = pd.read_csv(os.path.join(data_dir, "sales_eval.csv"))
+
+# Create and run the extractor
+extractor = FeatureExtractor(calendar, sell_prices, sales)
+processed_data = extractor.prepare_features()
+
+# Save the processed data
+output_dir = str(Path.cwd().parent / "dataset" / "processed")
+os.makedirs(output_dir, exist_ok=True)
+processed_data.to_csv(os.path.join(output_dir, "val_features.csv"), index=False)
